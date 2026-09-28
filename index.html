@@ -112,11 +112,11 @@ const app = {
 
       const data = await res.json();
 
-      if (!res.ok || !data.answer) {
+      if (!res.ok || !data.answer && !data.reply) {
         throw new Error("AI not responding");
       }
 
-      const answer = data.answer;
+      const answer = data.answer||data.reply;
 
       this.renderResult(answer);
       this.addHistory(question, answer);
