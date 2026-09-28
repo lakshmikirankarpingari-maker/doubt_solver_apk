@@ -1,35 +1,70 @@
 export default async function handler(req, res) {
   try {
-    const { question } = req.body || {};
+    const { question, image } = req.body;
 
-    if (!question) {
-      return res.status(200).json({ answer: "Ask something first" });
+    // If no API key or no credits → fallback
+    if (!process.env.OPENAI_API_KEY) {
+      return res.status(200).json({
+        answer: getFallbackAnswer(question)
+      });
     }
 
-    const response = await fetch("https://api.openai.com/v1/responses", {
+    const response = await fetch("https://api.openai.com/v1/chat/completions", {
       method: "POST",
       headers: {
-        "Content-Type": "application/json",
         "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
+        "Content-Type": "application/json"
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        input: question,
-      }),
+        messages: [
+          {
+            role: "user",
+            content: question || "Solve the problem"
+          }
+        ]
+      })
     });
 
     const data = await response.json();
 
-    const answer =
-      data?.output?.[0]?.content?.[0]?.text ||
-      "⚠️ AI did not respond";
+    // If API fails (like no credits)
+    if (!response.ok) {
+      return res.status(200).json({
+        answer: getFallbackAnswer(question)
+      });
+    }
 
-    res.status(200).json({ answer });
+    return res.status(200).json({
+      answer: data.choices?.[0]?.message?.content || getFallbackAnswer(question)
+    });
 
-  } catch (err) {
-    console.error(err);
-    res.status(200).json({
-      answer: "⚠️ AI error (check API key or credits)"
+  } catch (error) {
+    return res.status(200).json({
+      answer: getFallbackAnswer(req.body.question)
     });
   }
+}
+function getFallbackAnswer(q) {
+  if (!q) return "⚠️ No question provided";
+
+  q = q.toLowerCase();
+
+  // Simple math solving
+  try {
+    if (q.includes("+") || q.includes("-") || q.includes("*") || q.includes("/")) {
+      const result = eval(q.replace(/[^0-9+\-*/().]/g, ""));
+      return `🧠 Basic Solver Result: ${result}`;
+    }
+  } catch {}
+
+  if (q.includes("force")) {
+    return "Force = mass × acceleration (F = m × a)";
+  }
+
+  if (q.includes("energy")) {
+    return "Kinetic Energy = 1/2 × m × v²";
+  }
+
+  return "⚠️ AI credits not available. Showing basic answer only.";
 }
