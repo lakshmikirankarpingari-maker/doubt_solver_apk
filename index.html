@@ -7,31 +7,55 @@
 
 <script src="https://cdn.tailwindcss.com"></script>
 
+<!-- 🔥 FIREBASE -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+
+<style>
+body {
+  background: linear-gradient(135deg, #0f172a, #1e293b);
+  color: white;
+}
+.glass {
+  background: rgba(255,255,255,0.1);
+  backdrop-filter: blur(10px);
+}
+</style>
+
 </head>
 
-<body class="bg-gray-100">
+<body>
 
 <!-- HEADER -->
-<div class="bg-blue-600 text-white text-center p-4 text-xl font-bold">
+<div class="bg-blue-600 text-white text-center p-4 text-xl font-bold shadow">
 🤖 DoubtSolve AI
 </div>
 
 <!-- SUBJECTS -->
 <div class="flex gap-2 p-3 justify-center flex-wrap">
-<button onclick="app.setSubject('Math')" class="bg-white px-3 py-1 rounded shadow">Math</button>
-<button onclick="app.setSubject('Physics')" class="bg-white px-3 py-1 rounded shadow">Physics</button>
-<button onclick="app.setSubject('Chemistry')" class="bg-white px-3 py-1 rounded shadow">Chemistry</button>
-<button onclick="app.setSubject('Biology')" class="bg-white px-3 py-1 rounded shadow">Biology</button>
+<button onclick="app.setSubject('Math')" class="glass px-3 py-1 rounded">Math</button>
+<button onclick="app.setSubject('Physics')" class="glass px-3 py-1 rounded">Physics</button>
+<button onclick="app.setSubject('Chemistry')" class="glass px-3 py-1 rounded">Chemistry</button>
+<button onclick="app.setSubject('Biology')" class="glass px-3 py-1 rounded">Biology</button>
 </div>
 
 <!-- INPUT -->
 <div class="p-4">
-<textarea id="questionInput" class="w-full p-3 border rounded h-28"
+<textarea id="questionInput"
+class="w-full p-3 rounded bg-gray-900 border border-gray-700 h-28"
 placeholder="Type your question..."></textarea>
 
 <div class="flex gap-2 mt-2">
-<button onclick="startVoice()" class="bg-green-500 text-white px-3 py-1 rounded">🎤 Speak</button>
-<button onclick="app.solveQuestion()" class="bg-blue-600 text-white px-3 py-1 rounded w-full">Solve</button>
+
+<button onclick="startVoice()" class="bg-green-500 px-3 py-1 rounded">🎤</button>
+
+<input type="file" accept="image/*" onchange="handleImage(event)" class="hidden" id="fileInput">
+<button onclick="document.getElementById('fileInput').click()"
+class="bg-purple-500 px-3 py-1 rounded">📷</button>
+
+<button onclick="app.solveQuestion()"
+class="bg-blue-600 px-3 py-1 rounded w-full">Solve</button>
+
 </div>
 </div>
 
@@ -46,6 +70,16 @@ placeholder="Type your question..."></textarea>
 
 <script>
 
+// 🔥 FIREBASE CONFIG (PUT YOUR KEYS HERE)
+const firebaseConfig = {
+  apiKey: "AIzaSyAvvsFFdOwgxo281j5L4u0tR5HTTfu-veU",
+  authDomain: "doubtsolver-7c538.firebaseapp.com",
+  projectId: "doubtsolver-7c538"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
 // 🎤 VOICE
 function startVoice() {
   const recognition = new webkitSpeechRecognition();
@@ -57,6 +91,45 @@ function startVoice() {
   recognition.start();
 }
 
+// 📷 IMAGE HANDLER
+function handleImage(event) {
+  const file = event.target.files[0];
+  const reader = new FileReader();
+
+  reader.onload = function () {
+    solveImage(reader.result);
+  };
+
+  reader.readAsDataURL(file);
+}
+
+async function solveImage(imageBase64) {
+
+  document.getElementById("output").innerHTML = "⏳ Solving image...";
+
+  try {
+    const res = await fetch("/api/ask-ai", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        image: imageBase64
+      })
+    });
+
+    const data = await res.json();
+
+    const answer = data.answer || "⚠️ Could not solve image";
+
+    app.renderResult(answer);
+    app.saveToDB("📷 Image Question", answer);
+
+  } catch {
+    app.renderResult("❌ Image solve failed");
+  }
+}
+
 // 🚀 APP
 const app = {
 
@@ -64,29 +137,52 @@ const app = {
 
   setSubject(sub) {
     this.subject = sub;
-    alert("Subject: " + sub);
   },
 
   showLoading() {
-    document.getElementById("output").innerHTML = "⏳ Solving with AI...";
+    document.getElementById("output").innerHTML = "⏳ Solving...";
   },
 
   renderResult(text) {
-    document.getElementById("output").innerText = text;
+    document.getElementById("output").innerHTML = `
+      <div class="glass p-4 rounded">
+        ${text}
+      </div>
+    `;
   },
 
-  addHistory(q, a) {
-    const old = JSON.parse(localStorage.getItem("history") || "[]");
-    const updated = [{q,a}, ...old];
-    localStorage.setItem("history", JSON.stringify(updated));
+  async saveToDB(q, a) {
+    try {
+      await db.collection("history").add({
+        question: q,
+        answer: a,
+        subject: this.subject,
+        time: new Date()
+      });
+    } catch(e) {
+      console.error(e);
+    }
+  },
 
-    document.getElementById("history").innerHTML =
-      updated.map(item => `
-        <div class="bg-white p-2 rounded shadow mb-2">
-          <b>Q:</b> ${item.q}<br>
-          <b>A:</b> ${item.a}
+  async loadHistory() {
+    const snapshot = await db.collection("history")
+      .orderBy("time", "desc")
+      .limit(10)
+      .get();
+
+    let html = "";
+
+    snapshot.forEach(doc => {
+      const d = doc.data();
+      html += `
+        <div class="glass p-2 mb-2 rounded">
+          <b>Q:</b> ${d.question}<br>
+          <b>A:</b> ${d.answer}
         </div>
-      `).join("");
+      `;
+    });
+
+    document.getElementById("history").innerHTML = html;
   },
 
   async solveQuestion() {
@@ -112,33 +208,21 @@ const app = {
 
       const data = await res.json();
 
-      if (!res.ok || !data.answer && !data.reply) {
-        throw new Error("AI not responding");
-      }
-
-      const answer = data.answer||data.reply;
+      const answer = data.answer || "⚠️ No response";
 
       this.renderResult(answer);
-      this.addHistory(question, answer);
+      this.saveToDB(question, answer);
+      this.loadHistory();
 
     } catch (e) {
-      console.error(e);
-      this.renderResult("❌ AI error. Check API key or credits.");
+      this.renderResult("⚠️ Limited mode (no AI credits)");
     }
   }
 };
 
 // LOAD HISTORY
 window.onload = () => {
-  const old = JSON.parse(localStorage.getItem("history") || "[]");
-
-  document.getElementById("history").innerHTML =
-    old.map(item => `
-      <div class="bg-white p-2 rounded shadow mb-2">
-        <b>Q:</b> ${item.q}<br>
-        <b>A:</b> ${item.a}
-      </div>
-    `).join("");
+  app.loadHistory();
 };
 
 </script>
