@@ -1,4 +1,6 @@
 export default async function handler(req, res) {
+  console.log("API HIT"); // 👈 IMPORTANT
+
   try {
     const { question } = req.body;
 
@@ -6,15 +8,16 @@ export default async function handler(req, res) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`
+        "Authorization": `Bearer ${process.env.OPENAI_API_KEY}`,
       },
       body: JSON.stringify({
         model: "gpt-4o-mini",
-        input: question
-      })
+        input: question,
+      }),
     });
 
     const data = await response.json();
+    console.log(data); // 👈 DEBUG
 
     const answer =
       data.output?.[0]?.content?.[0]?.text || "No answer";
@@ -22,6 +25,7 @@ export default async function handler(req, res) {
     res.status(200).json({ answer });
 
   } catch (err) {
+    console.error(err);
     res.status(500).json({ error: "Server error" });
   }
 }
